@@ -116,11 +116,19 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
       }
     }
 
+    stage('Verify Namespace') {
+      steps {
+        container('helm') {
+          sh 'kubectl get ns ${KUBE_NAMESPACE} >/dev/null 2>&1 || { echo "Namespace ${KUBE_NAMESPACE} missing. Run OpenTofu (tofu apply) first."; exit 1; }'
+        }
+      }
+    }
+
     stage('Deploy (Helm)') {
       steps {
         container('helm') {
           sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && ls -1 ${WORKSPACE} || true'
-          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + '${CHART_DIR}' + ' -n ' + KUBE_NAMESPACE + ' --create-namespace ' + \
+          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + '${CHART_DIR}' + ' -n ' + KUBE_NAMESPACE + ' ' + \
              '--set app.name=' + params.APP_NAME + ' --set image.repository=' + REGISTRY_HOST + '/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
         }
       }
