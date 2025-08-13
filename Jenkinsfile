@@ -26,6 +26,7 @@ spec:
 
   parameters {
     string(name: 'APP_NAME', defaultValue: 'sample-app', description: 'App / Helm release name')
+    string(name: 'BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/eclipse-temurin:21-jre', description: 'Mirrored base runtime image')
   }
 
   environment {
@@ -46,7 +47,8 @@ spec:
         container('maven') {
           sh 'mvn -B -DskipTests package'
           writeFile file: 'Dockerfile', text: '''
-FROM eclipse-temurin:21-jre
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
@@ -64,6 +66,7 @@ ENTRYPOINT ["java","-jar","/app/app.jar"]
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
   --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
+  --build-arg BASE_IMAGE=${BASE_IMAGE} \
   --insecure --insecure-pull
 '''
         }
