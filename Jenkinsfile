@@ -55,8 +55,7 @@ EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${params.MIRRORED_BASE_IMAGE} \
-  --insecure --insecure-pull
+  --destination=${params.MIRRORED_BASE_IMAGE}
 """
         }
       }
@@ -88,8 +87,7 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
-  --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
-  --insecure --insecure-pull
+  --destination=${REGISTRY_HOST}/${APP_NAME}:latest
 '''
         }
       }
