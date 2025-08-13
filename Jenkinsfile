@@ -98,8 +98,9 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
     stage('Deploy (Helm)') {
       steps {
         container('helm') {
-          sh 'echo Workspace: ${WORKSPACE} && ls -1 ${WORKSPACE} && ls -1 ${WORKSPACE}/charts || true'
-          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + "${WORKSPACE}/" + CHART_PATH + ' -n ' + KUBE_NAMESPACE + ' --create-namespace ' + \
+          sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && find ${WORKSPACE} -maxdepth 3 -type f -printf "%p\n" 2>/dev/null || true'
+          sh 'test -d ${WORKSPACE}/charts/app || (echo "charts/app missing" && exit 1)'
+          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + "${WORKSPACE}/charts/app" + ' -n ' + KUBE_NAMESPACE + ' --create-namespace ' + \
              '--set app.name=' + params.APP_NAME + ' --set image.repository=' + REGISTRY_HOST + '/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
         }
       }
