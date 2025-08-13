@@ -26,7 +26,8 @@ spec:
 
   parameters {
     string(name: 'APP_NAME', defaultValue: 'sample-app', description: 'App / Helm release name')
-    string(name: 'BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/eclipse-temurin:21-jre', description: 'Mirrored base runtime image')
+    string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
+    string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/base/eclipse-temurin:21-jre', description: 'Internal mirrored base image (push target)')
   }
 
   environment {
@@ -38,6 +39,24 @@ spec:
   stages {
     stage('Checkout') { steps { checkout scm } }
 
+    stage('Mirror Base Image') {
+      steps {
+        container('kaniko') {
+          sh '''
+cat > Dockerfile.mirror <<'EOF'
+FROM ${UPSTREAM_BASE_IMAGE}
+LABEL mirror.from=${UPSTREAM_BASE_IMAGE}
+EOF
+/kaniko/executor \
+  --context=${WORKSPACE} \
+  --dockerfile=${WORKSPACE}/Dockerfile.mirror \
+  --destination=${MIRRORED_BASE_IMAGE} \
+  --insecure --insecure-pull
+'''
+        }
+      }
+    }
+
     stage('Build & Test') {
       steps { container('maven') { sh 'mvn -B test' } }
     }
@@ -47,7 +66,7 @@ spec:
         container('maven') {
           sh 'mvn -B -DskipTests package'
           writeFile file: 'Dockerfile', text: """
-FROM ${params.BASE_IMAGE}
+FROM ${params.MIRRORED_BASE_IMAGE}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
