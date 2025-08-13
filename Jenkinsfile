@@ -57,27 +57,26 @@ spec:
             } else if (params.USE_MINIKUBE_REGISTRY) {
               def ns = params.MINIKUBE_REGISTRY_NAMESPACE
               def svc = params.MINIKUBE_REGISTRY_SERVICE
-              // Probe service JSON only once
               def svcJson = sh(script: "kubectl get svc ${svc} -n ${ns} -o json 2>/dev/null || true", returnStdout: true).trim()
-              if (!svcJson) {
-                error "Minikube registry service ${svc}.${ns} not found. Enable with: minikube addons enable registry"
-              }
-              if (params.REGISTRY_PORT_OVERRIDE?.trim()) {
-                env.REGISTRY_PORT = params.REGISTRY_PORT_OVERRIDE.trim()
+              if (!svcJson) { error "Minikube registry service ${svc}.${ns} not found. Enable with: minikube addons enable registry" }
+              // Determine ports
+              def httpPort = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[?(@.name==\"http\")].port}'", returnStdout: true).trim()
+              def httpsPort = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[?(@.name==\"https\")].port}'", returnStdout: true).trim()
+              if (!httpPort) { httpPort = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim() }
+              // Build host WITHOUT port if standard 80/443
+              def hostBase = "${svc}.${ns}.svc.cluster.local"
+              def chosenPort = httpPort ?: '80'
+              if (chosenPort == '80') {
+                env.REGISTRY_HOST = hostBase
               } else {
-                // Try to pick a port mapping to container 5000; fallback first port
-                def port = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[?(@.targetPort==5000)].port}' 2>/dev/null || true", returnStdout: true).trim()
-                if (!port) {
-                  port = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true", returnStdout: true).trim()
-                }
-                env.REGISTRY_PORT = port ?: '5000'
+                env.REGISTRY_HOST = hostBase + ':' + chosenPort
               }
-              def host = "${svc}.${ns}.svc.cluster.local:${env.REGISTRY_PORT}"
-              env.REGISTRY_HOST = host
-              echo "Resolved Minikube addon registry host: ${env.REGISTRY_HOST}"
-              echo "(If pulls fail due to HTTPS attempt, mark it insecure in containerd or use REGISTRY_HOST_OVERRIDE with NodeIP:NodePort + hosts.toml)"
+              echo "Resolved registry host: ${env.REGISTRY_HOST} (httpPort=${httpPort} httpsPort=${httpsPort})"
+              if (httpsPort) {
+                echo "HTTPS port available (${httpsPort}); configure TLS trust and set REGISTRY_HOST_OVERRIDE=${hostBase}:${httpsPort} if desired."
+              }
             } else {
-              echo "Using default static REGISTRY_HOST=${env.REGISTRY_HOST} (no auto-detect)."
+              echo "Using default static REGISTRY_HOST=${env.REGISTRY_HOST}."
             }
           }
         }
@@ -88,10 +87,8 @@ spec:
       steps {
         container('kaniko') {
           script {
-            if (!params.MIRRORED_BASE_IMAGE?.trim()) {
-              error 'MIRRORED_BASE_IMAGE parameter is empty'
-            }
-            echo "Mirroring ${params.UPSTREAM_BASE_IMAGE} -> ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} (insecure)"
+            if (!params.MIRRORED_BASE_IMAGE?.trim()) { error 'MIRRORED_BASE_IMAGE parameter is empty' }
+            echo "Mirroring ${params.UPSTREAM_BASE_IMAGE} -> ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}"
           }
           sh """
 cat > Dockerfile.mirror <<'EOF'
@@ -101,8 +98,7 @@ EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} \
-  --insecure --insecure-pull
+  --destination=${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
 """
         }
       }
@@ -116,12 +112,6 @@ EOF
       steps {
         container('maven') {
           sh 'mvn -B -DskipTests package'
-          // Fail-fast if registry host still default placeholder but auto-detect requested
-          script {
-            if (params.USE_MINIKUBE_REGISTRY && !params.REGISTRY_HOST_OVERRIDE?.trim() && !env.REGISTRY_HOST.contains(params.MINIKUBE_REGISTRY_SERVICE)) {
-              error "Registry host did not resolve to expected Minikube service (${params.MINIKUBE_REGISTRY_SERVICE}); current=${env.REGISTRY_HOST}"
-            }
-          }
           writeFile file: 'Dockerfile', text: """
 FROM ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
 WORKDIR /app
@@ -130,7 +120,6 @@ EXPOSE 8080 8081
 ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 """
           sh 'echo DOCKERFILE BASE IMAGE: && grep "^FROM" Dockerfile'
-          echo "Generated Dockerfile using base image ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}";
         }
       }
     }
@@ -142,8 +131,7 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
-  --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
-  --insecure --insecure-pull
+  --destination=${REGISTRY_HOST}/${APP_NAME}:latest
 '''
         }
       }
