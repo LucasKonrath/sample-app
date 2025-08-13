@@ -17,7 +17,8 @@ spec:
       args: ['sleep 3600']
       tty: true
     - name: helm
-      image: alpine/helm:3.14.0
+      # Switched image to include kubectl
+      image: dtzar/helm-kubectl:3.14.0
       command: ['cat']
       tty: true
 """
