@@ -29,11 +29,13 @@ spec:
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
     string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/base/eclipse-temurin:21-jre', description: 'Internal mirrored base image (push target)')
     string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
+    string(name: 'REGISTRY_NODEPORT', defaultValue: '30050', description: 'NodePort exposed by registry service')
+    booleanParam(name: 'RESOLVE_MINIKUBE_IP', defaultValue: true, description: 'Auto-detect Minikube IP for registry host')
   }
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    REGISTRY_HOST  = 'registry.infra.svc.cluster.local:5000'
+    REGISTRY_HOST  = 'registry.infra.svc.cluster.local:5000' // will override if RESOLVE_MINIKUBE_IP
   }
 
   stages {
@@ -80,6 +82,23 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
       }
     }
 
+    stage('Resolve Registry Host') {
+      when { expression { return params.RESOLVE_MINIKUBE_IP } }
+      steps {
+        container('helm') { // lightweight
+          script {
+            def ip = sh(script: 'getent hosts minikube 2>/dev/null | awk "{print $1}" || true', returnStdout: true).trim()
+            if(!ip) {
+              ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}"', returnStdout: true).trim()
+            }
+            if(!ip) { error 'Could not resolve Minikube IP. Disable RESOLVE_MINIKUBE_IP and set REGISTRY_HOST manually.' }
+            env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
+            echo "Using registry host: ${env.REGISTRY_HOST}"
+          }
+        }
+      }
+    }
+
     stage('Build Image (Kaniko)') {
       steps {
         container('kaniko') {
@@ -87,7 +106,7 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
-  --destination=${REGISTRY_HOST}/${APP_NAME}:latest
+  --destination=${REGISTRY_HOST}/${APP_NAME}:latest 
 '''
         }
       }
@@ -128,7 +147,7 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
         container('helm') {
           sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && ls -1 ${WORKSPACE} || true'
           sh 'helm upgrade --install ' + params.APP_NAME + ' ' + '${CHART_DIR}' + ' -n ' + KUBE_NAMESPACE + ' ' + \
-             '--set app.name=' + params.APP_NAME + ' --set image.repository=' + REGISTRY_HOST + '/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
+             '--set app.name=' + params.APP_NAME + ' --set image.repository=' + '${REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
         }
       }
     }
