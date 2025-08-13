@@ -12,7 +12,7 @@ spec:
       command: ['cat']
       tty: true
     - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest-debug
+      image: gcr.io/kaniko-project/executor:debug
       command: ['sh','-c']
       args: ['sleep 3600']
       tty: true
