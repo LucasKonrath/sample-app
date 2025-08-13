@@ -38,17 +38,17 @@ spec:
     stage('Checkout') { steps { checkout scm } }
 
     stage('Build & Test') {
-      steps { container('maven') { sh 'mvn -pl sample-app -am -B test' } }
+      steps { container('maven') { sh 'mvn -B test' } }
     }
 
     stage('Package & Dockerfile') {
       steps {
         container('maven') {
-          sh 'mvn -pl sample-app -am -B -DskipTests package'
+          sh 'mvn -B -DskipTests package'
           writeFile file: 'Dockerfile', text: '''
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY sample-app/target/*SNAPSHOT.jar app.jar
+COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
 ENTRYPOINT ["java","-jar","/app/app.jar"]
 '''
