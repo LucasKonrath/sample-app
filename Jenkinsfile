@@ -13,7 +13,8 @@ spec:
       tty: true
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      command: ['cat']
+      command: ["/busybox/sh", "-c"]
+      args: ["sleep 3600"]
       tty: true
     - name: helm
       image: alpine/helm:3.14.0
@@ -34,16 +35,10 @@ spec:
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout') { steps { checkout scm } }
 
     stage('Build & Test') {
-      steps {
-        container('maven') {
-          sh 'mvn -pl sample-app -am -B test'
-        }
-      }
+      steps { container('maven') { sh 'mvn -pl sample-app -am -B test' } }
     }
 
     stage('Package & Dockerfile') {
@@ -66,8 +61,8 @@ ENTRYPOINT ["java","-jar","/app/app.jar"]
         container('kaniko') {
           sh '''
 /kaniko/executor \
-  --context=${PWD} \
-  --dockerfile=${PWD}/Dockerfile \
+  --context=${WORKSPACE} \
+  --dockerfile=${WORKSPACE}/Dockerfile \
   --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
   --insecure --insecure-pull
 '''
