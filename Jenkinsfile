@@ -48,6 +48,13 @@ spec:
             if (!params.MIRRORED_BASE_IMAGE?.trim()) {
               error 'MIRRORED_BASE_IMAGE parameter is empty'
             }
+            // If MIRRORED_BASE_IMAGE already contains a registry (starts with host[/]) keep it, else prepend REGISTRY_HOST
+            def mirrorTarget = params.MIRRORED_BASE_IMAGE.trim()
+            if (!(mirrorTarget ==~ /^[a-z0-9.-]+(:[0-9]+)?\//)) {
+              mirrorTarget = "${env.REGISTRY_HOST}/" + mirrorTarget
+            }
+            env.MIRROR_TARGET = mirrorTarget
+            echo "Normalized mirror target: ${env.MIRROR_TARGET}"
           }
           sh """
 cat > Dockerfile.mirror <<'EOF'
@@ -57,8 +64,7 @@ EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} \
-  --insecure --insecure-pull
+  --destination=${MIRROR_TARGET}
 """
         }
       }
@@ -72,8 +78,16 @@ EOF
       steps {
         container('maven') {
           sh 'mvn -B -DskipTests package'
+          script {
+            if (!env.MIRROR_TARGET) {
+              // Fallback if stage skipped; normalize here too
+              def mirrorTarget = params.MIRRORED_BASE_IMAGE.trim()
+              if (!(mirrorTarget ==~ /^[a-z0-9.-]+(:[0-9]+)?\//)) { mirrorTarget = "${env.REGISTRY_HOST}/" + mirrorTarget }
+              env.MIRROR_TARGET = mirrorTarget
+            }
+          }
           writeFile file: 'Dockerfile', text: """
-FROM ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
+FROM ${env.MIRROR_TARGET}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
