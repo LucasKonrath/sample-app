@@ -30,14 +30,13 @@ spec:
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
     string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'base/eclipse-temurin:21-jre', description: 'Internal mirrored base image path (suffix after registry host)')
     string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
-    string(name: 'REGISTRY_NODEPORT', defaultValue: '30050', description: 'NodePort exposed by registry service')
-    booleanParam(name: 'RESOLVE_MINIKUBE_IP', defaultValue: true, description: 'Auto-detect Minikube IP for registry host')
-    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '', description: 'Optional full registry host:port to use (takes precedence)')
+    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '', description: 'Optional full registry host:port (defaults to Minikube addon registry)')
   }
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    REGISTRY_HOST  = 'registry.infra.svc.cluster.local:5000' // placeholder; will be replaced
+    // Default to Minikube registry addon service
+    REGISTRY_HOST  = 'registry.kube-system.svc.cluster.local:5000'
   }
 
   stages {
@@ -49,21 +48,9 @@ spec:
           script {
             if (params.REGISTRY_HOST_OVERRIDE?.trim()) {
               env.REGISTRY_HOST = params.REGISTRY_HOST_OVERRIDE.trim()
-              echo "Using explicit REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
-            } else if (params.RESOLVE_MINIKUBE_IP) {
-              def ip = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
-              if(!ip) {
-                // attempt node IP only if we have permission; suppress forbidden errors
-                ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\\"InternalIP\\")].address}" 2>/dev/null || true', returnStdout: true).trim()
-              }
-              if(ip) {
-                env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
-                echo "Resolved registry host (NodeIP:NodePort): ${env.REGISTRY_HOST}"
-              } else {
-                echo 'WARNING: Could not resolve Minikube IP (no permission or command failed). Will fallback to default internal DNS registry host which may break image pulls.'
-              }
+              echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
             } else {
-              echo "INFO: Using default internal DNS registry host ${env.REGISTRY_HOST}. This often fails for node image pull (HTTP). Provide REGISTRY_HOST_OVERRIDE or enable RESOLVE_MINIKUBE_IP."
+              echo "Using Minikube addon registry: ${env.REGISTRY_HOST}"
             }
           }
         }
