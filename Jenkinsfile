@@ -28,11 +28,11 @@ spec:
     string(name: 'APP_NAME', defaultValue: 'sample-app', description: 'App / Helm release name')
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
     string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/base/eclipse-temurin:21-jre', description: 'Internal mirrored base image (push target)')
+    string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
   }
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    CHART_PATH     = 'charts/app'
     REGISTRY_HOST  = 'registry.infra.svc.cluster.local:5000'
   }
 
@@ -95,12 +95,32 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
       }
     }
 
+    stage('Resolve Chart') {
+      steps {
+        container('helm') {
+          script {
+            def defaultPath = "${WORKSPACE}/${params.CHART_PATH}"
+            if (fileExists(defaultPath)) {
+              env.CHART_DIR = defaultPath
+            } else {
+              def found = sh(script: "find ${WORKSPACE} -maxdepth 5 -type f -name Chart\\.yaml -print | head -1 || true", returnStdout: true).trim()
+              if (found) {
+                env.CHART_DIR = sh(script: "dirname ${found}", returnStdout: true).trim()
+              } else {
+                error "Helm chart not found at ${defaultPath}; provide CHART_PATH param or add chart to repo"
+              }
+            }
+            echo "Using Helm chart directory: ${env.CHART_DIR}"
+          }
+        }
+      }
+    }
+
     stage('Deploy (Helm)') {
       steps {
         container('helm') {
-          sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && find ${WORKSPACE} -maxdepth 3 -type f -printf "%p\n" 2>/dev/null || true'
-          sh 'test -d ${WORKSPACE}/charts/app || (echo "charts/app missing" && exit 1)'
-          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + "${WORKSPACE}/charts/app" + ' -n ' + KUBE_NAMESPACE + ' --create-namespace ' + \
+          sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && ls -1 ${WORKSPACE} || true'
+          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + '${CHART_DIR}' + ' -n ' + KUBE_NAMESPACE + ' --create-namespace ' + \
              '--set app.name=' + params.APP_NAME + ' --set image.repository=' + REGISTRY_HOST + '/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
         }
       }
