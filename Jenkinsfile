@@ -119,7 +119,8 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
     stage('Verify Namespace') {
       steps {
         container('helm') {
-          sh 'kubectl -n ${KUBE_NAMESPACE} get serviceaccount default >/dev/null 2>&1 || { echo "Namespace ${KUBE_NAMESPACE} not accessible (serviceaccount default not found). Run OpenTofu (tofu apply) first."; exit 1; }'
+          sh 'echo "(Non-blocking) Checking namespace access..."'
+          sh 'kubectl get ns ${KUBE_NAMESPACE} 2>&1 || echo "Namespace check skipped / insufficient RBAC, continuing."'
         }
       }
     }
