@@ -27,7 +27,7 @@ spec:
   parameters {
     string(name: 'APP_NAME', defaultValue: 'sample-app', description: 'App / Helm release name')
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
-    string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'registry.infra.svc.cluster.local:5000/base/eclipse-temurin:21-jre', description: 'Internal mirrored base image (push target)')
+    string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'base/eclipse-temurin:21-jre', description: 'Internal mirrored base image path (suffix after registry host)')
     string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
     string(name: 'REGISTRY_NODEPORT', defaultValue: '30050', description: 'NodePort exposed by registry service')
     booleanParam(name: 'RESOLVE_MINIKUBE_IP', defaultValue: true, description: 'Auto-detect Minikube IP for registry host')
@@ -57,7 +57,8 @@ EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${params.MIRRORED_BASE_IMAGE}
+  --destination=${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} \
+  --insecure --insecure-pull
 """
         }
       }
@@ -72,7 +73,7 @@ EOF
         container('maven') {
           sh 'mvn -B -DskipTests package'
           writeFile file: 'Dockerfile', text: """
-FROM ${params.MIRRORED_BASE_IMAGE}
+FROM ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
@@ -106,7 +107,8 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
-  --destination=${REGISTRY_HOST}/${APP_NAME}:latest 
+  --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
+  --insecure --insecure-pull
 '''
         }
       }
