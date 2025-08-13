@@ -46,14 +46,13 @@ spec:
       steps {
         container('maven') {
           sh 'mvn -B -DskipTests package'
-          writeFile file: 'Dockerfile', text: '''
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
+          writeFile file: 'Dockerfile', text: """
+FROM ${params.BASE_IMAGE}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
-ENTRYPOINT ["java","-jar","/app/app.jar"]
-'''
+ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
+"""
         }
       }
     }
@@ -66,7 +65,6 @@ ENTRYPOINT ["java","-jar","/app/app.jar"]
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile \
   --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
-  --build-arg BASE_IMAGE=${BASE_IMAGE} \
   --insecure --insecure-pull
 '''
         }
