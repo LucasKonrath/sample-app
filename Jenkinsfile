@@ -42,17 +42,22 @@ spec:
     stage('Mirror Base Image') {
       steps {
         container('kaniko') {
-          sh '''
+          script {
+            if (!params.MIRRORED_BASE_IMAGE?.trim()) {
+              error 'MIRRORED_BASE_IMAGE parameter is empty'
+            }
+          }
+          sh """
 cat > Dockerfile.mirror <<'EOF'
-FROM ${UPSTREAM_BASE_IMAGE}
-LABEL mirror.from=${UPSTREAM_BASE_IMAGE}
+FROM ${params.UPSTREAM_BASE_IMAGE}
+LABEL mirror.from=${params.UPSTREAM_BASE_IMAGE}
 EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${MIRRORED_BASE_IMAGE} \
+  --destination=${params.MIRRORED_BASE_IMAGE} \
   --insecure --insecure-pull
-'''
+"""
         }
       }
     }
