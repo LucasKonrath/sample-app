@@ -53,13 +53,17 @@ spec:
             } else if (params.RESOLVE_MINIKUBE_IP) {
               def ip = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
               if(!ip) {
-                ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}"', returnStdout: true).trim()
+                // attempt node IP only if we have permission; suppress forbidden errors
+                ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\\"InternalIP\\")].address}" 2>/dev/null || true', returnStdout: true).trim()
               }
-              if(!ip) { error 'Could not resolve Minikube IP and no override provided.' }
-              env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
-              echo "Resolved registry host (NodeIP:NodePort): ${env.REGISTRY_HOST}"
+              if(ip) {
+                env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
+                echo "Resolved registry host (NodeIP:NodePort): ${env.REGISTRY_HOST}"
+              } else {
+                echo 'WARNING: Could not resolve Minikube IP (no permission or command failed). Will fallback to default internal DNS registry host which may break image pulls.'
+              }
             } else {
-              echo "WARNING: Using default internal DNS registry host ${env.REGISTRY_HOST} (may fail for image pulls). Provide REGISTRY_HOST_OVERRIDE or enable RESOLVE_MINIKUBE_IP." 
+              echo "INFO: Using default internal DNS registry host ${env.REGISTRY_HOST}. This often fails for node image pull (HTTP). Provide REGISTRY_HOST_OVERRIDE or enable RESOLVE_MINIKUBE_IP."
             }
           }
         }
