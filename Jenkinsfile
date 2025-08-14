@@ -46,18 +46,29 @@ spec:
       steps {
         container('helm') {
           script {
+            def resolveNodeIP = {
+              def ip1 = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
+              if (ip1) { return ip1 }
+              def ip2 = sh(script: "kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true", returnStdout: true).trim()
+              if (ip2) { return ip2 }
+              def ip3 = sh(script: "kubectl get nodes -o wide | awk 'NR==2 {print $6}' 2>/dev/null || true", returnStdout: true).trim()
+              if (ip3) { return ip3 }
+              return ''
+            }
             if (params.REGISTRY_HOST_OVERRIDE?.trim()) {
               env.REGISTRY_HOST = params.REGISTRY_HOST_OVERRIDE.trim()
               echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
             } else {
-              def ip = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
-              if (!ip) { ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\\"InternalIP\\")].address}" 2>/dev/null || true', returnStdout: true).trim() }
-              if (!ip) { error 'Could not resolve Minikube IP for NodePort registry.' }
-              env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
-              echo "Resolved NodePort registry host: ${env.REGISTRY_HOST}";
+              def nodeIp = resolveNodeIP()
+              if (!nodeIp) { error 'Could not resolve Minikube / node InternalIP (tried minikube ip, jsonpath, wide output).' }
+              env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
+              echo "Resolved Node IP: ${nodeIp}"
             }
-            if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') { error 'Registry host not resolved' }
-            echo "(Informational) Ensure Minikube node containerd marked insecure for ${env.REGISTRY_HOST}.";
+            if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') {
+              error "Registry host not resolved (value='${env.REGISTRY_HOST}')"
+            }
+            echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
+            echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
           }
         }
       }
