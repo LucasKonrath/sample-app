@@ -90,9 +90,15 @@ spec:
             def resolved = env.REGISTRY_HOST?.trim()
             echo "DEBUG: Post-resolution env.REGISTRY_HOST='${resolved}'"
             if (!resolved || resolved == 'unset') {
-              resolved = ${params.REGISTRY_HOST_OVERRIDE} 
+              if (effectiveOverride) {
+                env.REGISTRY_HOST = effectiveOverride
+                resolved = env.REGISTRY_HOST
+                echo "Applied fallback override to env.REGISTRY_HOST=${env.REGISTRY_HOST}"
+              } else {
+                error "Registry host not resolved after attempts. effectiveOverride='${effectiveOverride ?: ''}' param='${params.REGISTRY_HOST_OVERRIDE}' envVar='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+              }
             }
-            ${env.REGISTRY_HOST} = effectiveOverride
+            env.REGISTRY_HOST = resolved
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
             echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
           }
