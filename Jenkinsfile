@@ -47,60 +47,40 @@ spec:
         container('helm') {
           script {
             echo '--- Resolving registry host (debug) ---'
-            // Debug: show service details for addon registry (may reveal nodePort)
             sh 'kubectl -n kube-system get svc registry -o wide || true'
             sh 'kubectl get nodes -o wide || true'
 
-            echo "DEBUG: Param REGISTRY_HOST_OVERRIDE raw='${params.REGISTRY_HOST_OVERRIDE}'"
-            echo "DEBUG: Env REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+            echo "DEBUG: Param REGISTRY_HOST_OVERRIDE='${params.REGISTRY_HOST_OVERRIDE}'"
+            echo "DEBUG: Env VAR REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
             echo "DEBUG: Initial env.REGISTRY_HOST='${env.REGISTRY_HOST}'"
 
-            def tryCmd = { label, cmd ->
-              def out = sh(script: cmd, returnStdout: true).trim()
-              echo "Attempt ${label}: '${cmd}' -> '${out}'"
-              return out
-            }
-
-            def nodeIp = ''
             def effectiveOverride = params.REGISTRY_HOST_OVERRIDE?.trim()
             if (!effectiveOverride) { effectiveOverride = env.REGISTRY_HOST_OVERRIDE?.trim() }
-            echo "DEBUG: effectiveOverride='${effectiveOverride ?: ''}'"
             if (effectiveOverride) {
               effectiveOverride = effectiveOverride.replaceFirst(/^https?:\/\//,'')
               env.REGISTRY_HOST = effectiveOverride
-              echo "Using registry host override: ${env.REGISTRY_HOST}"
+              echo "Applied explicit override. REGISTRY_HOST=${env.REGISTRY_HOST}"
+              // Short‑circuit: don't attempt auto detection if override supplied
             } else {
-              def a1 = tryCmd('minikube ip', 'minikube ip 2>/dev/null || true')
-              if (a1) nodeIp = a1
-              if (!nodeIp) {
-                def a2 = tryCmd('jsonpath internalIP', "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true")
-                if (a2) nodeIp = a2
+              def tryCmd = { label, cmd ->
+                def out = sh(script: cmd, returnStdout: true).trim()
+                echo "Attempt ${label}: '${out}'"
+                return out
               }
-              if (!nodeIp) {
-                def a3 = tryCmd('wide column 6', '''kubectl get nodes -o wide 2>/dev/null | awk 'NR==2 {print $6}' || true''')
-                if (a3) nodeIp = a3
-              }
-              if (!nodeIp) {
-                echo 'WARN: Could not auto-resolve node IP. Provide REGISTRY_HOST_OVERRIDE parameter (e.g. 192.168.49.2:32000).'
-              } else {
+              def nodeIp = tryCmd('minikube ip', 'minikube ip 2>/dev/null || true')
+              if (!nodeIp) { nodeIp = tryCmd('jsonpath internalIP', "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true") }
+              if (!nodeIp) { nodeIp = tryCmd('wide column 6', '''kubectl get nodes -o wide 2>/dev/null | awk 'NR==2 {print $6}' || true''') }
+              if (nodeIp) {
                 env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
                 echo "Auto-resolved registry host: ${env.REGISTRY_HOST}"
-              }
-            }
-            def resolved = env.REGISTRY_HOST?.trim()
-            echo "DEBUG: Post-resolution env.REGISTRY_HOST='${resolved}'"
-            if (!resolved || resolved == 'unset') {
-              if (effectiveOverride) {
-                env.REGISTRY_HOST = effectiveOverride
-                resolved = env.REGISTRY_HOST
-                echo "Applied fallback override to env.REGISTRY_HOST=${env.REGISTRY_HOST}"
               } else {
-                error "Registry host not resolved after attempts. effectiveOverride='${effectiveOverride ?: ''}' param='${params.REGISTRY_HOST_OVERRIDE}' envVar='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+                error 'Registry host could not be auto-resolved and no override provided.'
               }
             }
-            env.REGISTRY_HOST = resolved
+            if (!env.REGISTRY_HOST?.trim() || env.REGISTRY_HOST == 'unset') {
+              error "Registry host not set after resolution logic."
+            }
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
-            echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
           }
         }
       }
@@ -108,6 +88,7 @@ spec:
 
     stage('Mirror Base Image') {
       steps {
+        echo "DEBUG: Using REGISTRY_HOST in mirror stage = ${env.REGISTRY_HOST}"
         container('kaniko') {
           sh """
 cat > Dockerfile.mirror <<'EOF'
@@ -117,7 +98,7 @@ EOF
 /kaniko/executor \
   --context=${WORKSPACE} \
   --dockerfile=${WORKSPACE}/Dockerfile.mirror \
-  --destination=${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} \
+  --destination=${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} \
   --insecure --insecure-pull
 """
         }
@@ -130,10 +111,11 @@ EOF
 
     stage('Package & Dockerfile') {
       steps {
+        echo "DEBUG: Using REGISTRY_HOST in package stage = ${env.REGISTRY_HOST}"
         container('maven') {
           sh 'mvn -B -DskipTests package'
           writeFile file: 'Dockerfile', text: """
-FROM ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
+FROM ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
 WORKDIR /app
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
@@ -144,7 +126,12 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
     }
 
     stage('Build Image (Kaniko)') {
-      steps { container('kaniko') { sh '/kaniko/executor --context=${WORKSPACE} --dockerfile=${WORKSPACE}/Dockerfile --destination=${REGISTRY_HOST}/${APP_NAME}:latest --insecure --insecure-pull' } }
+      steps {
+        echo "DEBUG: Using REGISTRY_HOST in build image stage = ${env.REGISTRY_HOST}"
+        container('kaniko') {
+          sh "/kaniko/executor --context=${WORKSPACE} --dockerfile=${WORKSPACE}/Dockerfile --destination=${env.REGISTRY_HOST}/${params.APP_NAME}:latest --insecure --insecure-pull"
+        }
+      }
     }
 
     stage('Resolve Chart') {
@@ -178,7 +165,12 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
     }
 
     stage('Deploy (Helm)') {
-      steps { container('helm') { sh 'helm upgrade --install ' + params.APP_NAME + ' ${CHART_DIR} -n ' + KUBE_NAMESPACE + ' --set app.name=' + params.APP_NAME + ' --set image.repository=' + '${REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent' } }
+      steps {
+        echo "DEBUG: Using REGISTRY_HOST in deploy stage = ${env.REGISTRY_HOST}"
+        container('helm') {
+          sh 'helm upgrade --install ' + params.APP_NAME + ' ${CHART_DIR} -n ' + KUBE_NAMESPACE + ' --set app.name=' + params.APP_NAME + ' --set image.repository=' + '${env.REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
+        }
+      }
     }
   }
 
