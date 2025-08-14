@@ -92,7 +92,7 @@ spec:
             if (!resolved || resolved == 'unset') {
               resolved = ${params.REGISTRY_HOST_OVERRIDE} 
             }
-            env.REGISTRY_HOST = resolved
+            ${env.REGISTRY_HOST} = effectiveOverride
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
             echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
           }
