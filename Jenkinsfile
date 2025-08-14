@@ -70,7 +70,7 @@ spec:
                 if (a2) nodeIp = a2
               }
               if (!nodeIp) {
-                def a3 = tryCmd('wide column 6', "kubectl get nodes -o wide 2>/dev/null | awk 'NR==2 {print $6}' || true")
+                def a3 = tryCmd('wide column 6', '''kubectl get nodes -o wide 2>/dev/null | awk 'NR==2 {print $6}' || true''')
                 if (a3) nodeIp = a3
               }
               if (!nodeIp) {
