@@ -30,11 +30,21 @@ podAnnotations: {}
 livenessProbe:
   httpGet:
     path: /actuator/health/liveness
-    port: http
+    port: metrics
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 6
+  successThreshold: 1
 readinessProbe:
   httpGet:
     path: /actuator/health/readiness
-    port: http
+    port: metrics
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 6
+  successThreshold: 1
 
 nodeSelector: {}
 
