@@ -30,8 +30,9 @@ spec:
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
     string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'base/eclipse-temurin:21-jre', description: 'Internal mirrored base image path (suffix after registry host)')
     string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
-    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '', description: 'Optional manual registry host:port override (takes precedence)')
+    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '192.168.49.2:32001', description: 'Optional manual registry host:port override (takes precedence)')
     string(name: 'REGISTRY_NODEPORT', defaultValue: '32000', description: 'NodePort exposing the Minikube addon registry (must match infra)')
+    booleanParam(name: 'USE_SERVICE_DNS', defaultValue: true, description: 'Use in-cluster service DNS for registry (registry.kube-system.svc.cluster.local) when no override provided')
   }
 
   environment {
