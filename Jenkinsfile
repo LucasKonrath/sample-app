@@ -51,6 +51,11 @@ spec:
             sh 'kubectl -n kube-system get svc registry -o wide || true'
             sh 'kubectl get nodes -o wide || true'
 
+            echo "DEBUG: Param REGISTRY_HOST_OVERRIDE raw='${params.REGISTRY_HOST_OVERRIDE}'"
+            if (env.REGISTRY_HOST_OVERRIDE) {
+              echo "DEBUG: Env REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE}'"
+            }
+
             def tryCmd = { label, cmd ->
               def out = sh(script: cmd, returnStdout: true).trim()
               echo "Attempt ${label}: '${cmd}' -> '${out}'"
@@ -58,11 +63,17 @@ spec:
             }
 
             def nodeIp = ''
-            if (params.REGISTRY_HOST_OVERRIDE?.trim()) {
-              env.REGISTRY_HOST = params.REGISTRY_HOST_OVERRIDE.trim()
+            def overrideVal = params.REGISTRY_HOST_OVERRIDE?.trim()
+            if (!overrideVal && env.REGISTRY_HOST_OVERRIDE) {
+              overrideVal = env.REGISTRY_HOST_OVERRIDE.trim()
+              echo "Using env fallback REGISTRY_HOST_OVERRIDE='${overrideVal}'"
+            }
+            if (overrideVal) {
+              // Strip protocol if accidentally included
+              overrideVal = overrideVal.replaceFirst(/^https?:\/\//,'')
+              env.REGISTRY_HOST = overrideVal
               echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
             } else {
-              // Attempt sequence
               def a1 = tryCmd('minikube ip', 'minikube ip 2>/dev/null || true')
               if (a1) nodeIp = a1
               if (!nodeIp) {
@@ -79,9 +90,9 @@ spec:
                 env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
               }
             }
+            echo "DEBUG: env.REGISTRY_HOST='${env.REGISTRY_HOST}'"
             if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') {
-              echo 'ERROR: Registry host not resolved. Set REGISTRY_HOST_OVERRIDE manually (host:port).'
-              error "Registry host not resolved (value='${env.REGISTRY_HOST}')"
+              error "Registry host not resolved. Provided override raw='${params.REGISTRY_HOST_OVERRIDE}' env='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
             }
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
             echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
