@@ -46,25 +46,41 @@ spec:
       steps {
         container('helm') {
           script {
-            def resolveNodeIP = {
-              def ip1 = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
-              if (ip1) { return ip1 }
-              def ip2 = sh(script: "kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true", returnStdout: true).trim()
-              if (ip2) { return ip2 }
-              def ip3 = sh(script: '''kubectl get nodes -o wide | awk 'NR==2 {print $6}' 2>/dev/null || true''', returnStdout: true).trim()
-              if (ip3) { return ip3 }
-              return ''
+            echo '--- Resolving registry host (debug) ---'
+            // Debug: show service details for addon registry (may reveal nodePort)
+            sh 'kubectl -n kube-system get svc registry -o wide || true'
+            sh 'kubectl get nodes -o wide || true'
+
+            def tryCmd = { label, cmd ->
+              def out = sh(script: cmd, returnStdout: true).trim()
+              echo "Attempt ${label}: '${cmd}' -> '${out}'"
+              return out
             }
+
+            def nodeIp = ''
             if (params.REGISTRY_HOST_OVERRIDE?.trim()) {
               env.REGISTRY_HOST = params.REGISTRY_HOST_OVERRIDE.trim()
               echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
             } else {
-              def nodeIp = resolveNodeIP()
-              if (!nodeIp) { error 'Could not resolve Minikube / node InternalIP (tried minikube ip, jsonpath, wide output).' }
-              env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
-              echo "Resolved Node IP: ${nodeIp}"
+              // Attempt sequence
+              def a1 = tryCmd('minikube ip', 'minikube ip 2>/dev/null || true')
+              if (a1) nodeIp = a1
+              if (!nodeIp) {
+                def a2 = tryCmd('jsonpath internalIP', "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true")
+                if (a2) nodeIp = a2
+              }
+              if (!nodeIp) {
+                def a3 = tryCmd('wide column 6', "kubectl get nodes -o wide 2>/dev/null | awk 'NR==2 {print $6}' || true")
+                if (a3) nodeIp = a3
+              }
+              if (!nodeIp) {
+                echo 'WARN: Could not auto-resolve node IP. Provide REGISTRY_HOST_OVERRIDE parameter (e.g. 192.168.49.2:32000).'
+              } else {
+                env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
+              }
             }
             if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') {
+              echo 'ERROR: Registry host not resolved. Set REGISTRY_HOST_OVERRIDE manually (host:port).'
               error "Registry host not resolved (value='${env.REGISTRY_HOST}')"
             }
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
