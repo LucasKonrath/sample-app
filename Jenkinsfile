@@ -30,17 +30,13 @@ spec:
     string(name: 'UPSTREAM_BASE_IMAGE', defaultValue: 'docker.io/library/eclipse-temurin:21-jre', description: 'Upstream public base image to mirror')
     string(name: 'MIRRORED_BASE_IMAGE', defaultValue: 'base/eclipse-temurin:21-jre', description: 'Internal mirrored base image path (suffix after registry host)')
     string(name: 'CHART_PATH', defaultValue: 'charts/app', description: 'Relative path to Helm chart within repo (searched if missing)')
-    booleanParam(name: 'USE_MINIKUBE_REGISTRY', defaultValue: true, description: 'Auto-detect and use Minikube registry addon service')
-    string(name: 'MINIKUBE_REGISTRY_NAMESPACE', defaultValue: 'kube-system', description: 'Namespace of Minikube registry addon')
-    string(name: 'MINIKUBE_REGISTRY_SERVICE', defaultValue: 'registry', description: 'Service name of Minikube registry addon')
-    string(name: 'REGISTRY_PORT_OVERRIDE', defaultValue: '', description: 'Optional service port to use (detect if empty)')
-    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '', description: 'Optional full registry host:port (overrides all)')
+    string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '', description: 'Optional manual registry host:port override (takes precedence)')
+    string(name: 'REGISTRY_NODEPORT', defaultValue: '32000', description: 'NodePort exposing the Minikube addon registry (must match infra)')
   }
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    REGISTRY_HOST  = 'registry.kube-system.svc.cluster.local:80'
-    REGISTRY_PORT  = '80'
+    REGISTRY_HOST = 'unset'
   }
 
   stages {
@@ -53,22 +49,15 @@ spec:
             if (params.REGISTRY_HOST_OVERRIDE?.trim()) {
               env.REGISTRY_HOST = params.REGISTRY_HOST_OVERRIDE.trim()
               echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
-            } else if (params.USE_MINIKUBE_REGISTRY) {
-              def ns = params.MINIKUBE_REGISTRY_NAMESPACE
-              def svc = params.MINIKUBE_REGISTRY_SERVICE
-              def svcExists = sh(script: "kubectl get svc ${svc} -n ${ns} --no-headers 2>/dev/null || true", returnStdout: true).trim()
-              if (!svcExists) { error "Minikube registry service ${svc}.${ns} not found. Run: minikube addons enable registry" }
-              def servicePort = params.REGISTRY_PORT_OVERRIDE?.trim() ?: sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-              if (!servicePort) { servicePort = '80' }
-              env.REGISTRY_PORT = servicePort
-              env.REGISTRY_HOST = "${svc}.${ns}.svc.cluster.local:${env.REGISTRY_PORT}"
-              echo "Resolved registry service port=${env.REGISTRY_PORT} host=${env.REGISTRY_HOST}"
-              if (env.REGISTRY_PORT != '80') {
-                echo "WARNING: Expected registry service port 80; detected ${env.REGISTRY_PORT}. Confirm service spec."
-              }
             } else {
-              echo "Using static REGISTRY_HOST=${env.REGISTRY_HOST} (auto-detect disabled)."
+              def ip = sh(script: 'minikube ip 2>/dev/null || true', returnStdout: true).trim()
+              if (!ip) { ip = sh(script: 'kubectl get node -o jsonpath="{.items[0].status.addresses[?(@.type==\\"InternalIP\\")].address}" 2>/dev/null || true', returnStdout: true).trim() }
+              if (!ip) { error 'Could not resolve Minikube IP for NodePort registry.' }
+              env.REGISTRY_HOST = ip + ':' + params.REGISTRY_NODEPORT
+              echo "Resolved NodePort registry host: ${env.REGISTRY_HOST}";
             }
+            if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') { error 'Registry host not resolved' }
+            echo "(Informational) Ensure Minikube node containerd marked insecure for ${env.REGISTRY_HOST}.";
           }
         }
       }
@@ -77,10 +66,6 @@ spec:
     stage('Mirror Base Image') {
       steps {
         container('kaniko') {
-          script {
-            if (!params.MIRRORED_BASE_IMAGE?.trim()) { error 'MIRRORED_BASE_IMAGE parameter is empty' }
-            echo "Mirroring base to ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}"
-          }
           sh """
 cat > Dockerfile.mirror <<'EOF'
 FROM ${params.UPSTREAM_BASE_IMAGE}
@@ -111,23 +96,12 @@ COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
 ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 """
-          sh 'echo DOCKERFILE FROM: && grep "^FROM" Dockerfile'
         }
       }
     }
 
     stage('Build Image (Kaniko)') {
-      steps {
-        container('kaniko') {
-          sh '''
-/kaniko/executor \
-  --context=${WORKSPACE} \
-  --dockerfile=${WORKSPACE}/Dockerfile \
-  --destination=${REGISTRY_HOST}/${APP_NAME}:latest \
-  --insecure --insecure-pull
-'''
-        }
-      }
+      steps { container('kaniko') { sh '/kaniko/executor --context=${WORKSPACE} --dockerfile=${WORKSPACE}/Dockerfile --destination=${REGISTRY_HOST}/${APP_NAME}:latest --insecure --insecure-pull' } }
     }
 
     stage('Resolve Chart') {
@@ -161,14 +135,7 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
     }
 
     stage('Deploy (Helm)') {
-      steps {
-        container('helm') {
-          sh 'echo PWD=$(pwd) WORKSPACE=${WORKSPACE} && ls -1 ${WORKSPACE} || true'
-          sh 'helm upgrade --install ' + params.APP_NAME + ' ' + '${CHART_DIR}' + ' -n ' + KUBE_NAMESPACE + ' ' + \
-             '--set app.name=' + params.APP_NAME + ' --set image.repository=' + '${REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
-          echo "Deployed image ${REGISTRY_HOST}/${params.APP_NAME}:latest"
-        }
-      }
+      steps { container('helm') { sh 'helm upgrade --install ' + params.APP_NAME + ' ${CHART_DIR} -n ' + KUBE_NAMESPACE + ' --set app.name=' + params.APP_NAME + ' --set image.repository=' + '${REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent' } }
     }
   }
 
