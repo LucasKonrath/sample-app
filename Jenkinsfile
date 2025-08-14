@@ -36,10 +36,26 @@ spec:
 
   environment {
     KUBE_NAMESPACE = 'apps'
+    // IMAGE_TAG will be computed dynamically
   }
 
   stages {
     stage('Checkout') { steps { checkout scm } }
+
+    stage('Compute Image Tag') {
+      steps {
+        container('maven') { // any container with git available (mounted workspace)
+          script {
+            def sha = sh(script: 'git rev-parse --short=12 HEAD 2>/dev/null || echo none', returnStdout: true).trim()
+            if (sha == 'none' || !sha) {
+              sha = sh(script: 'date +%Y%m%d%H%M%S', returnStdout: true).trim()
+            }
+            env.IMAGE_TAG = sha + '-b' + env.BUILD_NUMBER
+            echo "Computed IMAGE_TAG=${env.IMAGE_TAG}"
+          }
+        }
+      }
+    }
 
     stage('Resolve Registry Host') {
       steps {
@@ -126,9 +142,9 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 
     stage('Build Image (Kaniko)') {
       steps {
-        echo "DEBUG: Using REGISTRY_HOST in build image stage = ${env.REGISTRY_HOST}"
+        echo "DEBUG: Using REGISTRY_HOST in build image stage = ${env.REGISTRY_HOST} and IMAGE_TAG=${env.IMAGE_TAG}"
         container('kaniko') {
-          sh "/kaniko/executor --context=${WORKSPACE} --dockerfile=${WORKSPACE}/Dockerfile --destination=${env.REGISTRY_HOST}/${params.APP_NAME}:latest --insecure --insecure-pull"
+          sh "/kaniko/executor --context=${WORKSPACE} --dockerfile=${WORKSPACE}/Dockerfile --destination=${env.REGISTRY_HOST}/${params.APP_NAME}:${env.IMAGE_TAG} --destination=${env.REGISTRY_HOST}/${params.APP_NAME}:latest --insecure --insecure-pull"
         }
       }
     }
@@ -168,15 +184,16 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
         container('helm') {
           script {
             def imageRepo = "${env.REGISTRY_HOST}/${params.APP_NAME}"
-            echo "DEBUG: Preparing Helm deploy with imageRepo=${imageRepo} chartDir=${env.CHART_DIR}"
+            def tag = env.IMAGE_TAG ?: 'latest'
+            echo "DEBUG: Preparing Helm deploy with imageRepo=${imageRepo} tag=${tag} chartDir=${env.CHART_DIR}"
             sh """
 #!/bin/bash -e
 set -o pipefail
-echo "DEBUG: Deploy stage using imageRepo='${imageRepo}' REGISTRY_HOST='${env.REGISTRY_HOST}' CHART_DIR='${env.CHART_DIR}'"
+echo "DEBUG: Deploy stage using imageRepo='${imageRepo}' TAG='${tag}' REGISTRY_HOST='${env.REGISTRY_HOST}' CHART_DIR='${env.CHART_DIR}'"
 helm upgrade --install ${params.APP_NAME} ${env.CHART_DIR} -n ${env.KUBE_NAMESPACE} \
   --set app.name=${params.APP_NAME} \
   --set image.repository=${imageRepo} \
-  --set image.tag=latest \
+  --set image.tag=${tag} \
   --set image.pullPolicy=IfNotPresent
 """
           }
