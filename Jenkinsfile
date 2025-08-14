@@ -168,15 +168,17 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
         container('helm') {
           script {
             def imageRepo = "${env.REGISTRY_HOST}/${params.APP_NAME}"
-            sh '''#!/bin/bash -e
+            echo "DEBUG: Preparing Helm deploy with imageRepo=${imageRepo} chartDir=${env.CHART_DIR}"
+            sh """
+#!/bin/bash -e
 set -o pipefail
-echo "DEBUG: Deploy stage using imageRepo=''''"'"'"${imageRepo}"'"'"'''' REGISTRY_HOST='${REGISTRY_HOST}' CHART_DIR='${CHART_DIR}'
-helm upgrade --install "${APP_NAME}" "${CHART_DIR}" -n "${KUBE_NAMESPACE}" \
-  --set app.name="${APP_NAME}" \
-  --set image.repository="${REGISTRY_HOST}/${APP_NAME}" \
+echo "DEBUG: Deploy stage using imageRepo='${imageRepo}' REGISTRY_HOST='${env.REGISTRY_HOST}' CHART_DIR='${env.CHART_DIR}'"
+helm upgrade --install ${params.APP_NAME} ${env.CHART_DIR} -n ${env.KUBE_NAMESPACE} \
+  --set app.name=${params.APP_NAME} \
+  --set image.repository=${imageRepo} \
   --set image.tag=latest \
   --set image.pullPolicy=IfNotPresent
-'''
+"""
           }
         }
       }
