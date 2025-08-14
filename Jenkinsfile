@@ -90,10 +90,12 @@ spec:
                 env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
               }
             }
-            echo "DEBUG: env.REGISTRY_HOST='${env.REGISTRY_HOST}'"
-            if (!env.REGISTRY_HOST || env.REGISTRY_HOST == 'unset') {
-              error "Registry host not resolved. Provided override raw='${params.REGISTRY_HOST_OVERRIDE}' env='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+            def resolved = env.REGISTRY_HOST?.trim()
+            echo "DEBUG: Post-resolution env.REGISTRY_HOST='${resolved}'"
+            if (!resolved || resolved == 'unset') {
+              error "Registry host not resolved after attempts. Provide REGISTRY_HOST_OVERRIDE (current param='${params.REGISTRY_HOST_OVERRIDE}')."
             }
+            env.REGISTRY_HOST = resolved
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
             echo "Reminder: mark ${env.REGISTRY_HOST} insecure inside minikube containerd if pulls fail with HTTPS attempts.";
           }
