@@ -39,7 +39,6 @@ spec:
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    // Default to Minikube registry addon service (service port 80, targetPort 5000)
     REGISTRY_HOST  = 'registry.kube-system.svc.cluster.local:80'
     REGISTRY_PORT  = '80'
   }
@@ -57,27 +56,18 @@ spec:
             } else if (params.USE_MINIKUBE_REGISTRY) {
               def ns = params.MINIKUBE_REGISTRY_NAMESPACE
               def svc = params.MINIKUBE_REGISTRY_SERVICE
-              def svcJson = sh(script: "kubectl get svc ${svc} -n ${ns} -o json 2>/dev/null || true", returnStdout: true).trim()
-              if (!svcJson) {
-                error "Minikube registry service ${svc}.${ns} not found. Enable with: minikube addons enable registry"
+              def svcExists = sh(script: "kubectl get svc ${svc} -n ${ns} --no-headers 2>/dev/null || true", returnStdout: true).trim()
+              if (!svcExists) { error "Minikube registry service ${svc}.${ns} not found. Run: minikube addons enable registry" }
+              def servicePort = params.REGISTRY_PORT_OVERRIDE?.trim() ?: sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+              if (!servicePort) { servicePort = '80' }
+              env.REGISTRY_PORT = servicePort
+              env.REGISTRY_HOST = "${svc}.${ns}.svc.cluster.local:${env.REGISTRY_PORT}"
+              echo "Resolved registry service port=${env.REGISTRY_PORT} host=${env.REGISTRY_HOST}"
+              if (env.REGISTRY_PORT != '80') {
+                echo "WARNING: Expected registry service port 80; detected ${env.REGISTRY_PORT}. Confirm service spec."
               }
-              // Detect service port (external cluster port) and targetPort
-              def servicePort = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-              def targetPort  = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].targetPort}'", returnStdout: true).trim()
-              if (params.REGISTRY_PORT_OVERRIDE?.trim()) {
-                servicePort = params.REGISTRY_PORT_OVERRIDE.trim()
-                echo "Using REGISTRY_PORT_OVERRIDE=${servicePort} (targetPort=${
-                if (!port) {
-                  port = sh(script: "kubectl get svc ${svc} -n ${ns} -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true", returnStdout: true).trim()
-                }
-                env.REGISTRY_PORT = port ?: '5000'
-              }
-              def host = "${svc}.${ns}.svc.cluster.local:${env.REGISTRY_PORT}"
-              env.REGISTRY_HOST = host
-              echo "Resolved Minikube addon registry host: ${env.REGISTRY_HOST}"
-              echo "(If pulls fail due to HTTPS attempt, mark it insecure in containerd or use REGISTRY_HOST_OVERRIDE with NodeIP:NodePort + hosts.toml)"
             } else {
-              echo "Using default static REGISTRY_HOST=${env.REGISTRY_HOST} (no auto-detect)."
+              echo "Using static REGISTRY_HOST=${env.REGISTRY_HOST} (auto-detect disabled)."
             }
           }
         }
@@ -88,10 +78,8 @@ spec:
       steps {
         container('kaniko') {
           script {
-            if (!params.MIRRORED_BASE_IMAGE?.trim()) {
-              error 'MIRRORED_BASE_IMAGE parameter is empty'
-            }
-            echo "Mirroring ${params.UPSTREAM_BASE_IMAGE} -> ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE} (insecure)"
+            if (!params.MIRRORED_BASE_IMAGE?.trim()) { error 'MIRRORED_BASE_IMAGE parameter is empty' }
+            echo "Mirroring base to ${env.REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}"
           }
           sh """
 cat > Dockerfile.mirror <<'EOF'
@@ -116,21 +104,14 @@ EOF
       steps {
         container('maven') {
           sh 'mvn -B -DskipTests package'
-          // Fail-fast if registry host still default placeholder but auto-detect requested
-          script {
-            if (params.USE_MINIKUBE_REGISTRY && !params.REGISTRY_HOST_OVERRIDE?.trim() && !env.REGISTRY_HOST.contains(params.MINIKUBE_REGISTRY_SERVICE)) {
-              error "Registry host did not resolve to expected Minikube service (${params.MINIKUBE_REGISTRY_SERVICE}); current=${env.REGISTRY_HOST}"
-            }
-          }
           writeFile file: 'Dockerfile', text: """
 FROM ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}
 WORKDIR /app
-COPY 'target/*SNAPSHOT.jar app.jar'
+COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080 8081
 ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 """
-          sh 'echo DOCKERFILE BASE IMAGE: && grep "^FROM" Dockerfile'
-          echo "Generated Dockerfile using base image ${REGISTRY_HOST}/${params.MIRRORED_BASE_IMAGE}";
+          sh 'echo DOCKERFILE FROM: && grep "^FROM" Dockerfile'
         }
       }
     }
