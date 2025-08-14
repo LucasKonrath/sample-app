@@ -52,9 +52,8 @@ spec:
             sh 'kubectl get nodes -o wide || true'
 
             echo "DEBUG: Param REGISTRY_HOST_OVERRIDE raw='${params.REGISTRY_HOST_OVERRIDE}'"
-            if (env.REGISTRY_HOST_OVERRIDE) {
-              echo "DEBUG: Env REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE}'"
-            }
+            echo "DEBUG: Env REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+            echo "DEBUG: Initial env.REGISTRY_HOST='${env.REGISTRY_HOST}'"
 
             def tryCmd = { label, cmd ->
               def out = sh(script: cmd, returnStdout: true).trim()
@@ -63,16 +62,13 @@ spec:
             }
 
             def nodeIp = ''
-            def overrideVal = params.REGISTRY_HOST_OVERRIDE?.trim()
-            if (!overrideVal && env.REGISTRY_HOST_OVERRIDE) {
-              overrideVal = env.REGISTRY_HOST_OVERRIDE.trim()
-              echo "Using env fallback REGISTRY_HOST_OVERRIDE='${overrideVal}'"
-            }
-            if (overrideVal) {
-              // Strip protocol if accidentally included
-              overrideVal = overrideVal.replaceFirst(/^https?:\/\//,'')
-              env.REGISTRY_HOST = overrideVal
-              echo "Using REGISTRY_HOST_OVERRIDE: ${env.REGISTRY_HOST}"
+            def effectiveOverride = params.REGISTRY_HOST_OVERRIDE?.trim()
+            if (!effectiveOverride) { effectiveOverride = env.REGISTRY_HOST_OVERRIDE?.trim() }
+            echo "DEBUG: effectiveOverride='${effectiveOverride ?: ''}'"
+            if (effectiveOverride) {
+              effectiveOverride = effectiveOverride.replaceFirst(/^https?:\/\//,'')
+              env.REGISTRY_HOST = effectiveOverride
+              echo "Using registry host override: ${env.REGISTRY_HOST}"
             } else {
               def a1 = tryCmd('minikube ip', 'minikube ip 2>/dev/null || true')
               if (a1) nodeIp = a1
@@ -88,12 +84,13 @@ spec:
                 echo 'WARN: Could not auto-resolve node IP. Provide REGISTRY_HOST_OVERRIDE parameter (e.g. 192.168.49.2:32000).'
               } else {
                 env.REGISTRY_HOST = nodeIp + ':' + params.REGISTRY_NODEPORT
+                echo "Auto-resolved registry host: ${env.REGISTRY_HOST}"
               }
             }
             def resolved = env.REGISTRY_HOST?.trim()
             echo "DEBUG: Post-resolution env.REGISTRY_HOST='${resolved}'"
             if (!resolved || resolved == 'unset') {
-              error "Registry host not resolved after attempts. Provide REGISTRY_HOST_OVERRIDE (current param='${params.REGISTRY_HOST_OVERRIDE}')."
+              error "Registry host not resolved after attempts. effectiveOverride='${effectiveOverride ?: ''}' param='${params.REGISTRY_HOST_OVERRIDE}' envVar='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
             }
             env.REGISTRY_HOST = resolved
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
