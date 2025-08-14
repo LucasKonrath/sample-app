@@ -165,9 +165,19 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
 
     stage('Deploy (Helm)') {
       steps {
-        echo "DEBUG: Using REGISTRY_HOST in deploy stage = ${env.REGISTRY_HOST}"
         container('helm') {
-          sh 'helm upgrade --install ' + params.APP_NAME + ' ${CHART_DIR} -n ' + KUBE_NAMESPACE + ' --set app.name=' + params.APP_NAME + ' --set image.repository=' + '${env.REGISTRY_HOST}/' + params.APP_NAME + ' --set image.tag=latest --set image.pullPolicy=IfNotPresent'
+          script {
+            def imageRepo = "${env.REGISTRY_HOST}/${params.APP_NAME}"
+            sh '''#!/bin/bash -e
+set -o pipefail
+echo "DEBUG: Deploy stage using imageRepo=''''"'"'"${imageRepo}"'"'"'''' REGISTRY_HOST='${REGISTRY_HOST}' CHART_DIR='${CHART_DIR}'
+helm upgrade --install "${APP_NAME}" "${CHART_DIR}" -n "${KUBE_NAMESPACE}" \
+  --set app.name="${APP_NAME}" \
+  --set image.repository="${REGISTRY_HOST}/${APP_NAME}" \
+  --set image.tag=latest \
+  --set image.pullPolicy=IfNotPresent
+'''
+          }
         }
       }
     }
