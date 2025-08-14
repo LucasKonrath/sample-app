@@ -36,7 +36,6 @@ spec:
 
   environment {
     KUBE_NAMESPACE = 'apps'
-    REGISTRY_HOST = 'unset'
   }
 
   stages {
@@ -52,15 +51,15 @@ spec:
 
             echo "DEBUG: Param REGISTRY_HOST_OVERRIDE='${params.REGISTRY_HOST_OVERRIDE}'"
             echo "DEBUG: Env VAR REGISTRY_HOST_OVERRIDE='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
-            echo "DEBUG: Initial env.REGISTRY_HOST='${env.REGISTRY_HOST}'"
+            echo "DEBUG: Initial env.REGISTRY_HOST='${env.REGISTRY_HOST ?: '(null)'}'"
 
             def effectiveOverride = params.REGISTRY_HOST_OVERRIDE?.trim()
             if (!effectiveOverride) { effectiveOverride = env.REGISTRY_HOST_OVERRIDE?.trim() }
+            echo "DEBUG: effectiveOverride='${effectiveOverride ?: ''}'"
             if (effectiveOverride) {
               effectiveOverride = effectiveOverride.replaceFirst(/^https?:\/\//,'')
               env.REGISTRY_HOST = effectiveOverride
-              echo "Applied explicit override. REGISTRY_HOST=${env.REGISTRY_HOST}"
-              // Short‑circuit: don't attempt auto detection if override supplied
+              echo "Applied explicit override. env.REGISTRY_HOST=${env.REGISTRY_HOST}"
             } else {
               def tryCmd = { label, cmd ->
                 def out = sh(script: cmd, returnStdout: true).trim()
@@ -77,8 +76,8 @@ spec:
                 error 'Registry host could not be auto-resolved and no override provided.'
               }
             }
-            if (!env.REGISTRY_HOST?.trim() || env.REGISTRY_HOST == 'unset') {
-              error "Registry host not set after resolution logic."
+            if (!env.REGISTRY_HOST?.trim()) {
+              error "Registry host not set after resolution logic (effectiveOverride='${effectiveOverride ?: ''}')."
             }
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
           }
