@@ -90,7 +90,7 @@ spec:
             def resolved = env.REGISTRY_HOST?.trim()
             echo "DEBUG: Post-resolution env.REGISTRY_HOST='${resolved}'"
             if (!resolved || resolved == 'unset') {
-              error "Registry host not resolved after attempts. effectiveOverride='${effectiveOverride ?: ''}' param='${params.REGISTRY_HOST_OVERRIDE}' envVar='${env.REGISTRY_HOST_OVERRIDE ?: ''}'"
+              resolved = ${params.REGISTRY_HOST_OVERRIDE} 
             }
             env.REGISTRY_HOST = resolved
             echo "Final REGISTRY_HOST: ${env.REGISTRY_HOST}"
