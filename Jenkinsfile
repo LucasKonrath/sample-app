@@ -51,7 +51,7 @@ spec:
               if (ip1) { return ip1 }
               def ip2 = sh(script: "kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null || true", returnStdout: true).trim()
               if (ip2) { return ip2 }
-              def ip3 = sh(script: "kubectl get nodes -o wide | awk 'NR==2 {print $6}' 2>/dev/null || true", returnStdout: true).trim()
+              def ip3 = sh(script: "kubectl get nodes -o wide | awk 'NR==2 {print \\$6}' 2>/dev/null || true", returnStdout: true).trim()
               if (ip3) { return ip3 }
               return ''
             }
