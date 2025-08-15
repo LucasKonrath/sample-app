@@ -6,20 +6,39 @@ apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins
-  containers:
-    - name: maven
-      image: maven:3.9-eclipse-temurin-21
-      command: ['cat']
-      tty: true
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:debug
-      command: ['sh','-c']
-  --set keda.enabled=${params.KEDA_ENABLED} \\
-  --set ingress.enabled=${params.INGRESS_ENABLED} \\
-  ${params.INGRESS_ENABLED && params.INGRESS_HOST ? "--set ingress.hosts[0].host=${params.INGRESS_HOST} \\\
-      # Switched image to include kubectl
-      image: dtzar/helm-kubectl:3.14.0
-      command: ['cat']
+            // Re-evaluate KEDA install permission (restore earlier logic if removed)
+            def effectiveKedaInstall = params.KEDA_INSTALL.toString()
+            if (effectiveKedaInstall == 'true') {
+              int canList = sh(script: 'kubectl auth can-i list customresourcedefinitions.apiextensions.k8s.io || true', returnStatus: true)
+              if (canList != 0) {
+                echo 'INFO: Jenkins service account lacks CRD list permissions; forcing keda.install=false.'
+                effectiveKedaInstall = 'false'
+              } else {
+                sh 'kubectl get crd scaledobjects.keda.sh || true'
+              }
+            }
+            def helmArgs = [
+              "--set app.name=${params.APP_NAME}",
+              "--set image.repository=${imageRepo}",
+              "--set image.tag=${tag}",
+              "--set image.pullPolicy=IfNotPresent",
+              "--set keda.install=${effectiveKedaInstall}",
+              "--set keda.enabled=${params.KEDA_ENABLED}",
+              "--set ingress.enabled=${params.INGRESS_ENABLED}"
+            ]
+            if (params.INGRESS_ENABLED && params.INGRESS_HOST) {
+              helmArgs << "--set ingress.hosts[0].host=${params.INGRESS_HOST}"
+            }
+            echo "DEBUG: Helm args: ${helmArgs.join(' ')}"
+            // Join with line continuations for readability
+            def joined = helmArgs.join(' \\\n  ')
+            sh """
+#!/bin/bash -e
+set -o pipefail
+echo "DEBUG: Deploy stage using imageRepo='${imageRepo}' TAG='${tag}' REGISTRY_HOST='${env.REGISTRY_HOST}' CHART_DIR='${env.CHART_DIR}'"
+helm upgrade --install ${params.APP_NAME} ${env.CHART_DIR} -n ${env.KUBE_NAMESPACE} \\
+  ${joined}
+"""
       tty: true
 """
     }
