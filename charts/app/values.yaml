@@ -15,10 +15,10 @@ ports:
 resources: {}
 
 service:
-  type: ClusterIP
+  type: NodePort
   annotations: {}
   # Optional: set a fixed NodePort (only used when type=NodePort). If null/empty, Kubernetes assigns one.
-  nodePort: null
+  nodePort: 30080
   # LoadBalancer specific options (only applied when type=LoadBalancer)
   loadBalancerIP: null
   loadBalancerSourceRanges: []  # e.g. ["0.0.0.0/0"]

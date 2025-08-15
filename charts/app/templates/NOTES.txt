@@ -1,0 +1,72 @@
+Thank you for deploying {{ include "app.name" . }}!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Chart Version: {{ .Chart.Version }}
+App Version: {{ .Chart.AppVersion }}
+
+Upgrade command example:
+  helm upgrade --install {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} \
+    --set image.repository=<registry>/<repo> \
+    --set image.tag=<new-tag>
+
+Current image:
+  {{ .Values.image.repository }}:{{ .Values.image.tag }}
+
+Service Type: {{ .Values.service.type }}
+
+Access Methods:
+{{- if eq (toString .Values.service.type) "NodePort" }}
+1. NodePort:
+   NODE_PORT=$(kubectl get svc {{ include "app.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+   NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+   curl http://$NODE_IP:$NODE_PORT/hello
+{{- end }}
+{{- if eq (toString .Values.service.type) "LoadBalancer" }}
+1. LoadBalancer:
+   kubectl get svc {{ include "app.fullname" . }} -n {{ .Release.Namespace }}
+   # Wait for EXTERNAL-IP
+   curl http://<EXTERNAL-IP>/hello
+{{- end }}
+{{- if .Values.ingress.enabled }}
+1. Ingress:
+   Host(s):
+{{- range .Values.ingress.hosts }}
+     - {{ .host }}
+{{- end }}
+   curl http://{{ (index .Values.ingress.hosts 0).host }}/hello
+{{- end }}
+{{- if and (ne (toString .Values.service.type) "LoadBalancer") (ne (toString .Values.service.type) "NodePort") (not .Values.ingress.enabled) }}
+1. Port-forward:
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "app.fullname" . }} 8080:80
+   curl http://localhost:8080/hello
+{{- end }}
+
+Metrics endpoint:
+  /actuator/prometheus (container port {{ .Values.ports.metrics }})
+  Example: curl http://localhost:8081/actuator/prometheus (via port-forward) 
+
+Health checks:
+  Liveness:  /actuator/health/liveness
+  Readiness: /actuator/health/readiness
+
+Autoscaling:
+  HPA enabled: {{ .Values.autoscaling.enabled }}
+  KEDA enabled: {{ .Values.keda.enabled }}
+
+To disable KEDA:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --set keda.enabled=false
+
+To switch Service to NodePort with fixed port:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --set service.type=NodePort --set service.nodePort=30080
+
+To enable Ingress:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --set ingress.enabled=true --set ingress.hosts[0].host=sample-app.local
+
+Rollback last release:
+  helm rollback {{ .Release.Name }} 1
+
+List revisions:
+  helm history {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Enjoy!
