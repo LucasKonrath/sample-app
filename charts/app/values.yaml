@@ -95,4 +95,4 @@ keda:
         serverAddress: http://prometheus-operated.infra.svc:9090
         metricName: http_server_requests_seconds_count
         threshold: "10"   # scale when > 10 req/s
-        query: rate(http_server_requests_seconds_count{application="sample-app"}[1m])
+        query: sum(rate(http_server_requests_seconds_count{application="sample-app"}[1m]))
