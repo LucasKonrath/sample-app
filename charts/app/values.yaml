@@ -17,6 +17,25 @@ resources: {}
 service:
   type: ClusterIP
   annotations: {}
+  # Optional: set a fixed NodePort (only used when type=NodePort). If null/empty, Kubernetes assigns one.
+  nodePort: null
+  # LoadBalancer specific options (only applied when type=LoadBalancer)
+  loadBalancerIP: null
+  loadBalancerSourceRanges: []  # e.g. ["0.0.0.0/0"]
+  externalTrafficPolicy: Cluster  # or Local (only for NodePort/LoadBalancer)
+  
+ingress:
+  enabled: false
+  className: "" # e.g. nginx, traefik; leave empty to use default controller
+  annotations: {}
+  hosts:
+    - host: sample-app.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: [] # e.g. - secretName: sample-app-tls
+           #   hosts:
+           #     - sample-app.local
 
 metrics:
   enabled: true

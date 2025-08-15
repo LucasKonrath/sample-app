@@ -35,6 +35,8 @@ spec:
     booleanParam(name: 'USE_SERVICE_DNS', defaultValue: true, description: 'Use in-cluster service DNS for registry (registry.kube-system.svc.cluster.local) when no override provided')
   booleanParam(name: 'KEDA_INSTALL', defaultValue: true, description: 'Set true to auto-install KEDA via Helm dependency (keda.install)')
   booleanParam(name: 'KEDA_ENABLED', defaultValue: true, description: 'Enable KEDA ScaledObject (keda.enabled)')
+  booleanParam(name: 'INGRESS_ENABLED', defaultValue: false, description: 'Enable ingress resource (ingress.enabled)')
+  string(name: 'INGRESS_HOST', defaultValue: 'sample-app.local', description: 'Hostname for ingress (first host). Ignored if blank or INGRESS_ENABLED=false')
   }
 
   environment {
@@ -212,6 +214,8 @@ helm upgrade --install ${params.APP_NAME} ${env.CHART_DIR} -n ${env.KUBE_NAMESPA
   --set image.pullPolicy=IfNotPresent \
   --set keda.install=${params.KEDA_INSTALL} \
   --set keda.enabled=${params.KEDA_ENABLED}
+  --set ingress.enabled=${params.INGRESS_ENABLED} \\
+  ${params.INGRESS_ENABLED && params.INGRESS_HOST ? "--set ingress.hosts[0].host=${params.INGRESS_HOST}" : ''}
 """
           }
         }
