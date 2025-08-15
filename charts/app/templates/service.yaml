@@ -24,7 +24,7 @@ spec:
     app.kubernetes.io/instance: {{ .Release.Name }}
   ports:
     - name: http
-      port: 80
+      port: {{ .Values.ports.http }}
       targetPort: http
       {{- if and (eq (toString .Values.service.type) "NodePort") .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}

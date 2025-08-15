@@ -38,7 +38,7 @@ Access Methods:
 {{- end }}
 {{- if and (ne (toString .Values.service.type) "LoadBalancer") (ne (toString .Values.service.type) "NodePort") (not .Values.ingress.enabled) }}
 1. Port-forward:
-   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "app.fullname" . }} 8080:80
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "app.fullname" . }} 8080:{{ .Values.ports.http }}
    curl http://localhost:8080/hello
 {{- end }}
 
