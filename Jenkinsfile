@@ -33,6 +33,8 @@ spec:
     string(name: 'REGISTRY_HOST_OVERRIDE', defaultValue: '192.168.49.2:32001', description: 'Optional manual registry host:port override (takes precedence)')
     string(name: 'REGISTRY_NODEPORT', defaultValue: '32000', description: 'NodePort exposing the Minikube addon registry (must match infra)')
     booleanParam(name: 'USE_SERVICE_DNS', defaultValue: true, description: 'Use in-cluster service DNS for registry (registry.kube-system.svc.cluster.local) when no override provided')
+  booleanParam(name: 'KEDA_INSTALL', defaultValue: true, description: 'Set true to auto-install KEDA via Helm dependency (keda.install)')
+  booleanParam(name: 'KEDA_ENABLED', defaultValue: true, description: 'Enable KEDA ScaledObject (keda.enabled)')
   }
 
   environment {
@@ -171,6 +173,18 @@ ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]
       }
     }
 
+    stage('Chart Dependencies') {
+      steps {
+        container('helm') {
+          script {
+            echo 'Building Helm chart dependencies (including optional KEDA)...'
+            sh "helm dependency build ${env.CHART_DIR} || helm dependency update ${env.CHART_DIR}"
+            sh "ls -l ${env.CHART_DIR}/charts || true"
+          }
+        }
+      }
+    }
+
     stage('Verify Namespace') {
       steps {
         container('helm') {
@@ -195,7 +209,9 @@ helm upgrade --install ${params.APP_NAME} ${env.CHART_DIR} -n ${env.KUBE_NAMESPA
   --set app.name=${params.APP_NAME} \
   --set image.repository=${imageRepo} \
   --set image.tag=${tag} \
-  --set image.pullPolicy=IfNotPresent
+  --set image.pullPolicy=IfNotPresent \
+  --set keda.install=${params.KEDA_INSTALL} \
+  --set keda.enabled=${params.KEDA_ENABLED}
 """
           }
         }
