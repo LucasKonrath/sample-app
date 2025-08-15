@@ -1,0 +1,33 @@
+{{- if and .Values.keda.enabled (not .Values.autoscaling.enabled) .Values.keda.triggers (gt (len .Values.keda.triggers) 0) }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "app.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "app.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    application: {{ include "app.name" . }}
+spec:
+  scaleTargetRef:
+    name: {{ include "app.fullname" . }}
+  pollingInterval: {{ .Values.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.keda.cooldownPeriod }}
+  minReplicaCount: {{ .Values.keda.minReplicaCount }}
+  maxReplicaCount: {{ .Values.keda.maxReplicaCount }}
+  triggers:
+    {{- range .Values.keda.triggers }}
+    - type: {{ .type }}
+      {{- if .metadata }}
+      metadata:
+        {{- range $k, $v := .metadata }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if .authenticationRef }}
+      authenticationRef:
+        name: {{ .authenticationRef.name }}
+      {{- end }}
+    {{- end }}
+{{- end }}
