@@ -1,4 +1,4 @@
-{{- if and .Values.keda.enabled (not .Values.autoscaling.enabled) .Values.keda.triggers (gt (len .Values.keda.triggers) 0) }}
+{{- if and .Values.keda.enabled (not .Values.autoscaling.enabled) .Values.keda.triggers (gt (len .Values.keda.triggers) 0) (.Capabilities.APIVersions.Has "keda.sh/v1alpha1") }}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -30,4 +30,9 @@ spec:
         name: {{ .authenticationRef.name }}
       {{- end }}
     {{- end }}
+{{- else if and .Values.keda.enabled (not (.Capabilities.APIVersions.Has "keda.sh/v1alpha1")) }}
+{{- /* Emit a harmless comment so users know why ScaledObject not created */ -}}
+# KEDA enabled in values but CRD keda.sh/v1alpha1 not found. Install KEDA:
+#   helm repo add kedacore https://kedacore.github.io/charts
+#   helm install keda kedacore/keda -n keda --create-namespace
 {{- end }}

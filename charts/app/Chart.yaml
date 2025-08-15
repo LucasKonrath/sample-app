@@ -9,3 +9,10 @@ keywords:
   - prometheus
   - micrometer
 type: application
+
+dependencies:
+  - name: keda
+    repository: https://kedacore.github.io/charts
+    # Choose a stable 2.x version; adjust as needed. Using a broad constraint.
+    version: ">=2.12.0 <3.0.0"
+    condition: keda.install
