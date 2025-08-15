@@ -4,7 +4,9 @@ app:
 replicaCount: 2
 
 image:
-  repository: nginx
+  # Default application image (overridden by Jenkins pipeline via --set image.repository / image.tag).
+  # Replaced nginx placeholder so manual 'helm upgrade --install' uses the built app image name by default.
+  repository: sample-app
   tag: latest
   pullPolicy: IfNotPresent
 
