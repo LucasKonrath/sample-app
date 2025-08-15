@@ -14,9 +14,9 @@ spec:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
       command: ['sh','-c']
-      args: ['sleep 3600']
-      tty: true
-    - name: helm
+  --set keda.enabled=${params.KEDA_ENABLED} \\
+  --set ingress.enabled=${params.INGRESS_ENABLED} \\
+  ${params.INGRESS_ENABLED && params.INGRESS_HOST ? "--set ingress.hosts[0].host=${params.INGRESS_HOST} \\\
       # Switched image to include kubectl
       image: dtzar/helm-kubectl:3.14.0
       command: ['cat']
