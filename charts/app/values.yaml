@@ -69,10 +69,10 @@ keda:
   pollingInterval: 30        # seconds between checks
   cooldownPeriod: 30         # seconds to wait before scaling down
   # Provide one or more triggers. Example Prometheus trigger below (disabled by default):
-  triggers: []
-   - type: prometheus
-     metadata:
-       serverAddress: http://prometheus-operated.monitoring.svc:9090
-       metricName: http_server_requests_seconds_count
-       threshold: "10"   # scale when > 10 req/s
-       query: rate(http_server_requests_seconds_count{application="sample-app"}[1m])
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc:9090
+        metricName: http_server_requests_seconds_count
+        threshold: "10"   # scale when > 10 req/s
+        query: rate(http_server_requests_seconds_count{application="sample-app"}[1m])
