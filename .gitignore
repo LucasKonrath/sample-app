@@ -1,0 +1,62 @@
+# --- Maven build output ---
+/target/
+
+# --- IDE project files ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+
+# --- OS / Editor noise ---
+.DS_Store
+Thumbs.db
+*
+!.gitignore
+
+# --- Java compilation artifacts ---
+*.class
+
+# --- Logs & reports ---
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# --- Package archives ---
+*.jar
+*.war
+*.ear
+
+# --- Temporary files ---
+*.swp
+*.swo
+*.tmp
+~$*
+
+# --- Env / credentials (add if you create them) ---
+.env
+.env.*
+!.env.example
+
+# --- Maven specific extras ---
+.mvn/timing.properties
+dependency-reduced-pom.xml
+
+# --- Coverage / test outputs (add if generated) ---
+/site/
+.jacoco*
+
+# --- Local tooling caches ---
+/.gradle/
+
+# Keep images and source code
+!src/**
+!charts/**
+!README.MD
+!Jenkinsfile
+!pom.xml
+!image-*.png
+!image.png
