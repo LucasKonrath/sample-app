@@ -1,5 +1,5 @@
-# --- Maven build output ---
-/target/
+# --- Build output ---
+target/
 
 # --- IDE project files ---
 .idea/
@@ -14,8 +14,6 @@
 # --- OS / Editor noise ---
 .DS_Store
 Thumbs.db
-*
-!.gitignore
 
 # --- Java compilation artifacts ---
 *.class
@@ -25,18 +23,18 @@ Thumbs.db
 hs_err_pid*.log
 replay_pid*.log
 
-# --- Package archives ---
+# --- Package archives (built artifacts) ---
 *.jar
 *.war
 *.ear
 
-# --- Temporary files ---
+# --- Temporary / swap ---
 *.swp
 *.swo
 *.tmp
 ~$*
 
-# --- Env / credentials (add if you create them) ---
+# --- Environment files ---
 .env
 .env.*
 !.env.example
@@ -45,18 +43,15 @@ replay_pid*.log
 .mvn/timing.properties
 dependency-reduced-pom.xml
 
-# --- Coverage / test outputs (add if generated) ---
-/site/
+# --- Coverage / reports ---
+site/
 .jacoco*
 
-# --- Local tooling caches ---
-/.gradle/
+# --- Gradle (if accidentally added) ---
+.gradle/
+build/
 
-# Keep images and source code
-!src/**
-!charts/**
-!README.MD
-!Jenkinsfile
-!pom.xml
-!image-*.png
-!image.png
+# --- Misc caches ---
+*.DS_Store
+
+# (Images, sources, charts, config are tracked automatically now)
